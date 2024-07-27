@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 use crate::{get_oracle_type, pyth_mainnet, pyth_pull_mainnet, OracleType};
 use anchor_lang::Key;
+use solana_sdk::pubkey::Pubkey;
 use solend_sdk::{
     error::LendingError,
     math::{Decimal, TryDiv, TryMul},
@@ -26,7 +27,7 @@ pub fn validate_pyth_keys(pyth_price_info: &AccountInfo) -> ProgramResult {
         return Ok(());
     }
 
-    match get_oracle_type(pyth_price_info)? {
+    match get_oracle_type(pyth_price_info.owner, pyth_price_info.key)? {
         OracleType::Pyth => validate_pyth_price_account_info(pyth_price_info),
         OracleType::PythPull => validate_pyth_pull_price_account_info(pyth_price_info),
         _ => Err(LendingError::InvalidOracleConfig.into()),
@@ -65,31 +66,34 @@ pub fn validate_pyth_pull_price_account_info(
 }
 
 /// get pyth price without caring about staleness or variance. only used
-pub fn get_pyth_price_unchecked(pyth_price_info: &AccountInfo) -> Result<Decimal, ProgramError> {
-    if *pyth_price_info.key == solend_sdk::NULL_PUBKEY {
+pub fn get_pyth_price_unchecked(pyth_price_pubkey: &Pubkey, pyth_price_data: &[u8]) -> Result<Decimal, ProgramError> {
+    if *pyth_price_pubkey == solend_sdk::NULL_PUBKEY {
         return Err(LendingError::NullOracleConfig.into());
     }
 
-    let data = &pyth_price_info.try_borrow_data()?;
+    let data = pyth_price_data;
     let price_account = pyth_sdk_solana::state::load_price_account(data).map_err(|e| {
         msg!("Couldn't load price feed from account info: {:?}", e);
         LendingError::InvalidOracleConfig
     })?;
 
-    let price_feed = price_account.to_price_feed(pyth_price_info.key);
+    let price_feed = price_account.to_price_feed(pyth_price_pubkey);
     let price = price_feed.get_price_unchecked();
     pyth_price_to_decimal(&price)
 }
 
 pub fn get_pyth_pull_price_unchecked(
-    pyth_price_info: &AccountInfo,
+    pyth_price_owner: &Pubkey,
+    pyth_price_data: &[u8]
 ) -> Result<Decimal, ProgramError> {
-    if *pyth_price_info.owner != pyth_pull_mainnet::id() {
+    if *pyth_price_owner != pyth_pull_mainnet::id() {
         msg!("pyth price account is not owned by pyth program");
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let price_feed_account: PriceUpdateV2 = account_deserialize(pyth_price_info)?;
+    // I hate this unecessary clone -- why does deserialize require mut?
+    let mut data = pyth_price_data.clone();
+    let price_feed_account: PriceUpdateV2 = PriceUpdateV2::try_deserialize(&mut data)?;
     // let data = &pyth_price_info.data.borrow()[..];
     // let price_feed_account: PriceUpdateV2 = PriceUpdateV2::try_from_slice(data).map_err(|e| {
     //     msg!("Couldn't load price feed from account info: {:?}", e);
@@ -106,14 +110,15 @@ pub fn get_pyth_pull_price_unchecked(
 }
 
 pub fn get_pyth_price(
-    pyth_price_info: &AccountInfo,
+    pyth_price_pubkey: &Pubkey,
+    pyth_price_data: &[u8],
     clock: &Clock,
 ) -> Result<(Decimal, Decimal), ProgramError> {
-    if *pyth_price_info.key == solend_sdk::NULL_PUBKEY {
+    if *pyth_price_pubkey == solend_sdk::NULL_PUBKEY {
         return Err(LendingError::NullOracleConfig.into());
     }
 
-    let data = &pyth_price_info.try_borrow_data()?;
+    let data = pyth_price_data;
     let price_account = pyth_sdk_solana::state::load_price_account(data).map_err(|e| {
         msg!("Couldn't load price feed from account info: {:?}", e);
         LendingError::InvalidOracleConfig
@@ -144,7 +149,7 @@ pub fn get_pyth_price(
 
     let market_price = pyth_price_to_decimal(&pyth_price);
     let ema_price = {
-        let price_feed = price_account.to_price_feed(pyth_price_info.key);
+        let price_feed = price_account.to_price_feed(pyth_price_pubkey);
         // this can be unchecked bc the ema price is only used to _limit_ borrows and withdraws.
         // ie staleness doesn't _really_ matter for this field.
         //
@@ -172,14 +177,17 @@ pub fn account_deserialize<T: AccountDeserialize>(
 }
 
 pub fn get_pyth_pull_price(
-    pyth_price_info: &AccountInfo,
+    pyth_price_pubkey: &Pubkey,
+    pyth_price_data: &[u8],
     clock: &Clock,
 ) -> Result<(Decimal, Decimal), ProgramError> {
-    if *pyth_price_info.key == solend_sdk::NULL_PUBKEY {
+    if *pyth_price_pubkey == solend_sdk::NULL_PUBKEY {
         return Err(LendingError::NullOracleConfig.into());
     }
 
-    let price_feed_account: PriceUpdateV2 = account_deserialize(pyth_price_info)?;
+    // I hate this unecessary clone -- why does deserialize require mut?
+    let mut data = pyth_price_data.clone();
+    let price_feed_account: PriceUpdateV2 = PriceUpdateV2::try_deserialize(&mut data)?;
 
     let pyth_price = price_feed_account
         .get_price_no_older_than_with_custom_verification_level(
@@ -596,7 +604,7 @@ mod test {
                 0,
             );
 
-            let result = get_pyth_price(&account_info, &test_case.clock);
+            let result = get_pyth_price(account_info.key, &account_info.try_borrow_data()?, &test_case.clock);
             assert_eq!(
                 result,
                 test_case.expected_result,
@@ -645,7 +653,7 @@ mod test {
         );
 
         assert_eq!(
-            get_pyth_price_unchecked(&account_info),
+            get_pyth_price_unchecked(account_info.key, &account_info.try_borrow_data().unwrap()),
             Ok(Decimal::from(2000_u64))
         );
     }
@@ -690,14 +698,14 @@ mod test {
         let ema_price = Decimal::from(134522707_u64)
             .try_div(Decimal::from(1000000_u64))
             .unwrap();
-        assert_eq!(get_pyth_pull_price_unchecked(&account_info).unwrap(), price);
+        assert_eq!(get_pyth_pull_price_unchecked(account_info.owner, &account_info.try_borrow_data().unwrap()).unwrap(), price);
 
         let clock = Clock {
             slot: 240,
             ..Clock::default()
         };
         assert_eq!(
-            get_pyth_pull_price(&account_info, &clock).unwrap(),
+            get_pyth_pull_price(account_info.key, &account_info.try_borrow_data().unwrap(), &clock).unwrap(),
             (price, ema_price)
         );
     }

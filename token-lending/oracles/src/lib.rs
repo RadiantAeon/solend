@@ -10,6 +10,7 @@ use crate::switchboard::get_switchboard_price_v2;
 use solana_program::{
     account_info::AccountInfo, msg, program_error::ProgramError, sysvar::clock::Clock,
 };
+use solana_sdk::pubkey::Pubkey;
 use solend_sdk::error::LendingError;
 use solend_sdk::math::Decimal;
 
@@ -20,58 +21,62 @@ pub enum OracleType {
     SbOnDemand,
 }
 
-pub fn get_oracle_type(oracle_info: &AccountInfo) -> Result<OracleType, ProgramError> {
-    if *oracle_info.owner == pyth_mainnet::id() {
+pub fn get_oracle_type(oracle_account_owner: &Pubkey, oracle_account_pubkey: &Pubkey) -> Result<OracleType, ProgramError> {
+    if *oracle_account_owner == pyth_mainnet::id() {
         return Ok(OracleType::Pyth);
-    } else if *oracle_info.owner == pyth_pull_mainnet::id() {
+    } else if *oracle_account_owner == pyth_pull_mainnet::id() {
         return Ok(OracleType::PythPull);
-    } else if *oracle_info.owner == switchboard_v2_mainnet::id() {
+    } else if *oracle_account_owner == switchboard_v2_mainnet::id() {
         return Ok(OracleType::Switchboard);
-    } else if *oracle_info.owner == switchboard_on_demand_mainnet::id() {
+    } else if *oracle_account_owner == switchboard_on_demand_mainnet::id() {
         return Ok(OracleType::SbOnDemand);
     }
 
     msg!(
         "Could not find oracle type for {:?} with owner {:?}",
-        oracle_info.key,
-        oracle_info.owner
+        oracle_account_pubkey,
+        oracle_account_owner
     );
     Err(LendingError::InvalidOracleConfig.into())
 }
 
 pub fn get_single_price(
-    oracle_account_info: &AccountInfo,
+    oracle_account_owner: &Pubkey,
+    oracle_account_pubkey: &Pubkey,
+    oracle_account_data: &[u8],
     clock: &Clock,
 ) -> Result<(Decimal, Option<Decimal>), ProgramError> {
-    match get_oracle_type(oracle_account_info)? {
+    match get_oracle_type(oracle_account_owner, oracle_account_pubkey)? {
         OracleType::Pyth => {
-            let price = pyth::get_pyth_price(oracle_account_info, clock)?;
+            let price = pyth::get_pyth_price(oracle_account_pubkey, oracle_account_data, clock)?;
             Ok((price.0, Some(price.1)))
         }
         OracleType::PythPull => {
-            let price = get_pyth_pull_price(oracle_account_info, clock)?;
+            let price = get_pyth_pull_price(oracle_account_pubkey, oracle_account_data, clock)?;
             Ok((price.0, Some(price.1)))
         }
         OracleType::Switchboard => {
-            let price = get_switchboard_price(oracle_account_info, clock)?;
+            let price = get_switchboard_price(oracle_account_pubkey, oracle_account_owner, oracle_account_data, clock)?;
             Ok((price, None))
         }
         OracleType::SbOnDemand => {
-            let price = get_switchboard_price(oracle_account_info, clock)?;
+            let price = get_switchboard_price(oracle_account_pubkey, oracle_account_owner, oracle_account_data, clock)?;
             Ok((price, None))
         }
     }
 }
 
 pub fn get_single_price_unchecked(
-    oracle_account_info: &AccountInfo,
+    oracle_account_owner: &Pubkey,
+    oracle_account_pubkey: &Pubkey,
+    oracle_account_data: &[u8],
     clock: &Clock,
 ) -> Result<Decimal, ProgramError> {
-    match get_oracle_type(oracle_account_info)? {
-        OracleType::Pyth => get_pyth_price_unchecked(oracle_account_info),
-        OracleType::PythPull => get_pyth_pull_price_unchecked(oracle_account_info),
-        OracleType::Switchboard => get_switchboard_price_v2(oracle_account_info, clock, false),
-        OracleType::SbOnDemand => get_switchboard_price_on_demand(oracle_account_info, clock, true),
+    match get_oracle_type(oracle_account_owner, oracle_account_pubkey)? {
+        OracleType::Pyth => get_pyth_price_unchecked(oracle_account_pubkey, oracle_account_data),
+        OracleType::PythPull => get_pyth_pull_price_unchecked(oracle_account_pubkey, oracle_account_data),
+        OracleType::Switchboard => get_switchboard_price_v2(oracle_account_data, clock, false),
+        OracleType::SbOnDemand => get_switchboard_price_on_demand(oracle_account_data, clock, true),
     }
 }
 

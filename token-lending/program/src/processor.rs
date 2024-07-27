@@ -489,7 +489,7 @@ fn validate_extra_oracle(
         return Err(LendingError::InvalidOracleConfig.into());
     }
 
-    match get_oracle_type(extra_oracle_info)? {
+    match get_oracle_type(extra_oracle_info.owner, extra_oracle_info.key)? {
         OracleType::Pyth => {
             validate_pyth_price_account_info(extra_oracle_info)?;
         }
@@ -572,7 +572,9 @@ fn _refresh_reserve<'a>(
                 }
 
                 Some(get_single_price_unchecked(
-                    extra_oracle_account_info,
+                    extra_oracle_account_info.owner,
+                    &extra_oracle_account_info.key,
+                    &extra_oracle_account_info.try_borrow_data()?,
                     clock,
                 )?)
             }
@@ -3211,7 +3213,7 @@ fn get_price(
     main_price_account_info: &AccountInfo,
     clock: &Clock,
 ) -> Result<(Decimal, Option<Decimal>), ProgramError> {
-    if let Ok(prices) = get_single_price(main_price_account_info, clock) {
+    if let Ok(prices) = get_single_price(main_price_account_info.owner, main_price_account_info.key, &main_price_account_info.try_borrow_data()?, clock) {
         return Ok((prices.0, prices.1));
     }
 
@@ -3219,7 +3221,7 @@ fn get_price(
     if let Some(secondary_price_account_info_unwrapped) = secondary_price_account_info {
         // TODO: add support for secondary smoothed prices. Probably need to add a new
         // secondary account per reserve.
-        if let Ok(prices) = get_single_price(secondary_price_account_info_unwrapped, clock) {
+        if let Ok(prices) = get_single_price(secondary_price_account_info_unwrapped.owner, secondary_price_account_info_unwrapped.key, &secondary_price_account_info_unwrapped.try_borrow_data()?, clock) {
             return Ok((prices.0, prices.1));
         }
     }

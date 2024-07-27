@@ -1,5 +1,6 @@
 use crate::get_oracle_type;
 use crate::OracleType;
+use solana_sdk::pubkey::Pubkey;
 use solend_sdk::math::TryDiv;
 use solend_sdk::math::TryMul;
 
@@ -18,34 +19,48 @@ use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData a
 use switchboard_v2::AggregatorAccountData;
 
 pub fn get_switchboard_price(
-    switchboard_feed_info: &AccountInfo,
+    switchboard_feed_pubkey: &Pubkey,
+    switchboard_feed_owner: &Pubkey,
+    switchboard_feed_data: &[u8],
     clock: &Clock,
 ) -> Result<Decimal, ProgramError> {
-    if *switchboard_feed_info.key == solend_sdk::NULL_PUBKEY {
+    if *switchboard_feed_pubkey == solend_sdk::NULL_PUBKEY {
         return Err(LendingError::NullOracleConfig.into());
     }
-    if switchboard_feed_info.owner == &switchboard_v2_mainnet::id()
-        || switchboard_feed_info.owner == &switchboard_v2_devnet::id()
+    if switchboard_feed_owner == &switchboard_v2_mainnet::id()
+        || switchboard_feed_owner == &switchboard_v2_devnet::id()
     {
-        return get_switchboard_price_v2(switchboard_feed_info, clock, true);
+        return get_switchboard_price_v2(switchboard_feed_data, clock, true);
     }
 
-    if switchboard_feed_info.owner == &switchboard_on_demand_devnet::id()
-        || switchboard_feed_info.owner == &switchboard_on_demand_mainnet::id()
+    if switchboard_feed_owner == &switchboard_on_demand_devnet::id()
+        || switchboard_feed_owner == &switchboard_on_demand_mainnet::id()
     {
-        return get_switchboard_price_on_demand(switchboard_feed_info, clock, true);
+        return get_switchboard_price_on_demand(switchboard_feed_data, clock, true);
     }
     Err(LendingError::NullOracleConfig.into())
 }
 
 pub fn get_switchboard_price_on_demand(
-    switchboard_feed_info: &AccountInfo,
+    switchboard_feed_data: &[u8],
     clock: &Clock,
     check_staleness: bool,
 ) -> Result<Decimal, ProgramError> {
     const STALE_AFTER_SLOTS_ELAPSED: u64 = 240;
-    let data = switchboard_feed_info.try_borrow_data()?;
-    let feed = SbOnDemandFeed::parse(data).map_err(|_| ProgramError::InvalidAccountData)?;
+    let data = switchboard_feed_data;
+
+    // copied from sb lib
+    if data.len() < SbOnDemandFeed::discriminator().len() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let mut disc_bytes = [0u8; 8];
+    disc_bytes.copy_from_slice(&data[..8]);
+    if disc_bytes != SbOnDemandFeed::discriminator() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let feed: &SbOnDemandFeed = bytemuck::from_bytes::<SbOnDemandFeed>(&data[8..]);
     let slots_elapsed = clock
         .slot
         .checked_sub(feed.result.slot)
@@ -85,12 +100,12 @@ pub fn get_switchboard_price_on_demand(
 }
 
 pub fn get_switchboard_price_v2(
-    switchboard_feed_info: &AccountInfo,
+    switchboard_feed_data: &[u8],
     clock: &Clock,
     check_staleness: bool,
 ) -> Result<Decimal, ProgramError> {
     const STALE_AFTER_SLOTS_ELAPSED: u64 = 240;
-    let data = &switchboard_feed_info.try_borrow_data()?;
+    let data = switchboard_feed_data;
     let feed = AggregatorAccountData::new_from_bytes(data)?;
 
     let slots_elapsed = clock
@@ -117,7 +132,7 @@ pub fn validate_switchboard_keys(switchboard_feed_info: &AccountInfo) -> Program
         return Ok(());
     }
 
-    match get_oracle_type(switchboard_feed_info)? {
+    match get_oracle_type(switchboard_feed_info.owner, switchboard_feed_info.key)? {
         OracleType::Switchboard => validate_switchboard_v2_keys(switchboard_feed_info),
         OracleType::SbOnDemand => validate_sb_on_demand_keys(switchboard_feed_info),
         _ => Err(LendingError::InvalidOracleConfig.into()),
