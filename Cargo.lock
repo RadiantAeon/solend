@@ -3015,7 +3015,7 @@ dependencies = [
  "bytemuck",
  "log",
  "proptest",
- "pyth-sdk-solana",
+ "pyth-sdk-solana 0.9.0",
  "pyth-solana-receiver-sdk",
  "rand 0.8.5",
  "serde",
@@ -3350,6 +3350,23 @@ name = "pyth-sdk-solana"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "afa571ea6ea51102b8fc03303d0e6fea4f788f77bb4e0d65ae2d3c5e384e3187"
+dependencies = [
+ "borsh 0.10.3",
+ "borsh-derive 0.10.3",
+ "bytemuck",
+ "num-derive 0.3.3",
+ "num-traits",
+ "pyth-sdk",
+ "serde",
+ "solana-program",
+ "thiserror",
+]
+
+[[package]]
+name = "pyth-sdk-solana"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "875de47128e93a881ede3ad97aa5a4dc32397995277ff5e599eed8bba8d43334"
 dependencies = [
  "borsh 0.10.3",
  "borsh-derive 0.10.3",
@@ -5388,7 +5405,7 @@ dependencies = [
  "log",
  "oracles",
  "proptest",
- "pyth-sdk-solana",
+ "pyth-sdk-solana 0.8.0",
  "pyth-solana-receiver-sdk",
  "serde",
  "serde_yaml 0.8.26",
@@ -6465,9 +6482,9 @@ checksum = "497961ef93d974e23eb6f433eb5fe1b7930b659f06d12dec6fc44a8f554c0bba"
 
 [[package]]
 name = "uint"
-version = "0.9.1"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6470ab50f482bde894a037a57064480a246dbfdd5960bd65a44824693f08da5f"
+checksum = "76f64bba2c53b04fcab63c01a7d7427eadc821e3bc48c34dc9ba29c501164b52"
 dependencies = [
  "byteorder",
  "crunchy",
