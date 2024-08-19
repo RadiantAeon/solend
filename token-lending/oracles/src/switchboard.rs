@@ -113,7 +113,7 @@ pub fn get_switchboard_price_v2(
         .checked_sub(feed.latest_confirmed_round.round_open_slot)
         .ok_or(LendingError::MathOverflow)?;
     if check_staleness && slots_elapsed >= STALE_AFTER_SLOTS_ELAPSED {
-        msg!("Switchboard oracle price is stale");
+        // msg!("Switchboard oracle price is stale");
         return Err(LendingError::InvalidOracleConfig.into());
     }
 
