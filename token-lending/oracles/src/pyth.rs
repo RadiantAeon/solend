@@ -91,8 +91,7 @@ pub fn get_pyth_pull_price_unchecked(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    // I hate this unecessary clone -- why does deserialize require mut?
-    let mut data = pyth_price_data.clone();
+    let mut data = pyth_price_data;
     let price_feed_account: PriceUpdateV2 = PriceUpdateV2::try_deserialize(&mut data)?;
     // let data = &pyth_price_info.data.borrow()[..];
     // let price_feed_account: PriceUpdateV2 = PriceUpdateV2::try_from_slice(data).map_err(|e| {
@@ -126,7 +125,7 @@ pub fn get_pyth_price(
     let pyth_price = price_account
         .get_price_no_older_than(clock, STALE_AFTER_SLOTS_ELAPSED)
         .ok_or_else(|| {
-            msg!("Pyth oracle price is too stale!");
+            // msg!("Pyth oracle price is too stale!");
             LendingError::InvalidOracleConfig
         })?;
 
@@ -185,8 +184,7 @@ pub fn get_pyth_pull_price(
         return Err(LendingError::NullOracleConfig.into());
     }
 
-    // I hate this unecessary clone -- why does deserialize require mut?
-    let mut data = pyth_price_data.clone();
+    let mut data = pyth_price_data;
     let price_feed_account: PriceUpdateV2 = PriceUpdateV2::try_deserialize(&mut data)?;
 
     let pyth_price = price_feed_account
