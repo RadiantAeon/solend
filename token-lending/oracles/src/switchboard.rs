@@ -60,7 +60,7 @@ pub fn get_switchboard_price_on_demand(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let feed: &SbOnDemandFeed = bytemuck::from_bytes::<SbOnDemandFeed>(&data[8..]);
+    let feed: &SbOnDemandFeed = bytemuck::try_from_bytes::<SbOnDemandFeed>(&data[8..]).map_err(|_| ProgramError::InvalidAccountData)?;
     let slots_elapsed = clock
         .slot
         .checked_sub(feed.result.slot)
