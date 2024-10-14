@@ -32,11 +32,6 @@ pub fn get_oracle_type(oracle_account_owner: &Pubkey, oracle_account_pubkey: &Pu
         return Ok(OracleType::SbOnDemand);
     }
 
-    msg!(
-        "Could not find oracle type for {:?} with owner {:?}",
-        oracle_account_pubkey,
-        oracle_account_owner
-    );
     Err(LendingError::InvalidOracleConfig.into())
 }
 
